@@ -279,6 +279,7 @@ function BaseURLExtensions() {
 
     function sendRequest(request, info) {
         request.open('GET', requestModifierExt.modifyRequestURL(info.url));
+        request.withCredentials = context.withCredentials === true;
         request.responseType = 'arraybuffer';
         request.setRequestHeader('Range', 'bytes=' + info.range.start + '-' + info.range.end);
         request = requestModifierExt.modifyRequestHeader(request);

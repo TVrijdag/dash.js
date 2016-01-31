@@ -52,6 +52,7 @@ import Protection from '../Protection.js';
 
 function ProtectionController(config) {
 
+    let context = this.context;
     let protectionExt = config.protectionExt;
     let protectionModel = config.protectionModel;
     let adapter = config.adapter;
@@ -473,6 +474,7 @@ function ProtectionController(config) {
         }
 
         xhr.open(licenseServerData.getHTTPMethod(messageType), url, true);
+        xhr.withCredentials = context.withCredentials === true;
         xhr.responseType = licenseServerData.getResponseType(keySystemString, messageType);
         xhr.onload = function () {
             if (this.status == 200) {

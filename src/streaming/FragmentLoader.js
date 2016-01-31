@@ -123,6 +123,7 @@ function FragmentLoader(config) {
         lastTraceTime = request.requestStartDate;
 
         req.open('GET', requestModifierExt.modifyRequestURL(request.url), true);
+        req.withCredentials = context.withCredentials === true;
         req.responseType = 'arraybuffer';
         req = requestModifierExt.modifyRequestHeader(req);
         /*
@@ -207,6 +208,7 @@ function FragmentLoader(config) {
         var isSuccessful = false;
 
         req.open('HEAD', request.url, true);
+        req.withCredentials = context.withCredentials === true;
 
         req.onload = function () {
             if (req.status < 200 || req.status > 299) return;

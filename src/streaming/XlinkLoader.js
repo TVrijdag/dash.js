@@ -162,6 +162,7 @@ function XlinkLoader(config) {
             request.onerror = report;
             request.onprogress = progress;
             request.open('GET', requestModifierExt.modifyRequestURL(url), true);
+            request.withCredentials = context.withCredentials === true;
             request.send();
         } catch (e) {
             log('Xlink loading Error');

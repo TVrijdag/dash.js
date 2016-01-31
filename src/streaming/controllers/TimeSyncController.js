@@ -251,6 +251,7 @@ function TimeSyncController() {
         };
 
         req.open(verb, url);
+        req.withCredentials = context.withCredentials === true;
         req.timeout = HTTP_TIMEOUT_MS || 0;
         req.onload = onload;
         req.onloadend = oncomplete;
