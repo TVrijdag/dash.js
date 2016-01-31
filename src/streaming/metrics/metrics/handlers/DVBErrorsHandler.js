@@ -28,63 +28,64 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-import ThroughputRule from './ThroughputRule.js';
-import BufferOccupancyRule from './BufferOccupancyRule.js';
-import InsufficientBufferRule from './InsufficientBufferRule.js';
-import AbandonRequestsRule from './AbandonRequestsRule.js';
-import MetricsModel from '../../models/MetricsModel.js';
-import DashMetricsExtensions from '../../../dash/extensions/DashMetricsExtensions.js';
-import FactoryMaker from '../../../core/FactoryMaker.js';
 
-const QUALITY_SWITCH_RULES = 'qualitySwitchRules';
-const ABANDON_FRAGMENT_RULES = 'abandonFragmentRules';
+import FactoryMaker from '../../../../core/FactoryMaker.js';
+import MetricsReportingEvents from '../../MetricsReportingEvents.js';
 
-function ABRRulesCollection() {
-
-    let context = this.context;
+function DVBErrorsHandler(config) {
 
     let instance,
-        qualitySwitchRules,
-        abandonFragmentRules;
+        reportingController;
 
-    function initialize() {
-        qualitySwitchRules = [];
-        abandonFragmentRules = [];
+    let eventBus = config.eventBus;
 
-        let metricsModel = MetricsModel(context).getInstance();
-
-        qualitySwitchRules.push(ThroughputRule(context).create({
-                metricsModel: metricsModel,
-                metricsExt: DashMetricsExtensions(context).getInstance()
-            })
+    function onInitialisationComplete() {
+        // we only want to report this once per call to initialize
+        eventBus.off(
+            MetricsReportingEvents.METRICS_INITIALISATION_COMPLETE,
+            onInitialisationComplete,
+            this
         );
-        qualitySwitchRules.push(BufferOccupancyRule(context).create({metricsModel: metricsModel}));
-        qualitySwitchRules.push(InsufficientBufferRule(context).create({metricsModel: metricsModel}));
-        abandonFragmentRules.push(AbandonRequestsRule(context).create());
+
+        // Note: A Player becoming a reporting Player is itself
+        // something which is recorded by the DVBErrors metric.
+        eventBus.trigger(
+            MetricsReportingEvents.BECAME_REPORTING_PLAYER
+        );
     }
 
-    function getRules (type) {
-        switch (type) {
-            case QUALITY_SWITCH_RULES:
-                return qualitySwitchRules;
-            case ABANDON_FRAGMENT_RULES:
-                return abandonFragmentRules;
-            default:
-                return null;
+    function initialize(unused, rc) {
+        if (rc) {
+            reportingController = rc;
+
+            eventBus.on(
+                MetricsReportingEvents.METRICS_INITIALISATION_COMPLETE,
+                onInitialisationComplete,
+                this
+            );
+        }
+    }
+
+    function reset() {
+        reportingController = null;
+    }
+
+    function handleNewMetric(metric, vo) {
+        // simply pass metric straight through
+        if (metric === 'DVBErrors') {
+            if (reportingController) {
+                reportingController.report(metric, vo);
+            }
         }
     }
 
     instance = {
-        initialize: initialize,
-        getRules: getRules
+        initialize:         initialize,
+        reset:              reset,
+        handleNewMetric:    handleNewMetric
     };
 
     return instance;
 }
 
-let factory =  FactoryMaker.getSingletonFactory(ABRRulesCollection);
-
-factory.QUALITY_SWITCH_RULES = QUALITY_SWITCH_RULES;
-factory.ABANDON_FRAGMENT_RULES = ABANDON_FRAGMENT_RULES;
-
-export default factory;
+export default FactoryMaker.getClassFactory(DVBErrorsHandler);

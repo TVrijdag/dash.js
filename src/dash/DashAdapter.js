@@ -38,10 +38,9 @@ import FactoryMaker from '../core/FactoryMaker.js';
 
 const METRIC_LIST = {
     //TODO need to refactor all that reference to be able to export like all other const on factory object.
-    TCP_CONNECTION: 'TcpConnection',
-    HTTP_REQUEST: 'HttpRequest',
-    HTTP_REQUEST_TRACE: 'HttpRequestTrace',
-    TRACK_SWITCH: 'RepresentationSwitch',
+    TCP_CONNECTION: 'TcpList',
+    HTTP_REQUEST: 'HttpList',
+    TRACK_SWITCH: 'RepSwitchList',
     BUFFER_LEVEL: 'BufferLevel',
     BUFFER_STATE: 'BufferState',
     DVR_INFO: 'DVRInfo',
@@ -52,7 +51,7 @@ const METRIC_LIST = {
     MANIFEST_UPDATE_STREAM_INFO: 'ManifestUpdatePeriodInfo',
     MANIFEST_UPDATE_TRACK_INFO: 'ManifestUpdateRepresentationInfo',
     PLAY_LIST: 'PlayList',
-    PLAY_LIST_TRACE: 'PlayListTrace'
+    DVB_ERRORS: 'DVBErrors'
 };
 
 function DashAdapter() {
@@ -129,7 +128,17 @@ function DashAdapter() {
         viewpoint = manifestExt.getViewpointForAdaptation(a);
         mediaInfo.viewpoint = viewpoint ? viewpoint.value : undefined;
         mediaInfo.accessibility = manifestExt.getAccessibilityForAdaptation(a).map(function (accessibility) {
-            return accessibility.value;
+            let accessibilityValue = accessibility.value;
+            let accessiblityData = accessibilityValue;
+            if (accessibility.schemeIdUri && (accessibility.schemeIdUri.search('cea-608') >= 0) && typeof (cea608parser) !== 'undefined') {
+                if (accessibilityValue) {
+                    accessiblityData = 'cea-608:' + accessibilityValue;
+                } else {
+                    accessiblityData = 'cea-608';
+                }
+                mediaInfo.embeddedCaptions = true;
+            }
+            return accessiblityData;
         });
         mediaInfo.audioChannelConfiguration =  manifestExt.getAudioChannelConfigurationForAdaptation(a).map(function (audioChannelConfiguration) {
             return audioChannelConfiguration.value;
@@ -151,6 +160,17 @@ function DashAdapter() {
         mediaInfo.isText = manifestExt.getIsTextTrack(mediaInfo.mimeType);
 
         return mediaInfo;
+    }
+
+    function convertVideoInfoToEmbeddedTextInfo(mediaInfo, channel, lang) {
+        mediaInfo.id = channel; // CC1, CC2, CC3, or CC4
+        mediaInfo.index = 100 + parseInt(channel.substring(2, 3));
+        mediaInfo.type = 'embeddedText';
+        mediaInfo.codec = 'cea-608-in-SEI';
+        mediaInfo.isText = true;
+        mediaInfo.isEmbedded = true;
+        mediaInfo.lang = channel + ' ' + lang;
+        mediaInfo.roles = ['caption'];
     }
 
     function convertPeriodToStreamInfo(manifest, period) {
@@ -199,24 +219,63 @@ function DashAdapter() {
     function getAllMediaInfoForType(manifest, streamInfo, type) {
         var periodInfo = getPeriodForStreamInfo(streamInfo);
         var periodId = periodInfo.id;
-        var adaptationsForType = manifestExt.getAdaptationsForType(manifest, streamInfo.index, type);
+        var adaptationsForType = manifestExt.getAdaptationsForType(manifest, streamInfo.index, type !== 'embeddedText' ? type : 'video');
 
         var mediaArr = [];
 
         var data,
             media,
-            idx;
+            idx,
+            i,
+            j,
+            ln;
 
         if (!adaptationsForType) return mediaArr;
 
         adaptations[periodId] = adaptations[periodId] || manifestExt.getAdaptationsForPeriod(manifest, periodInfo);
 
-        for (var i = 0, ln = adaptationsForType.length; i < ln; i++) {
+        for (i = 0, ln = adaptationsForType.length; i < ln; i++) {
             data = adaptationsForType[i];
             idx = manifestExt.getIndexForAdaptation(data, manifest, streamInfo.index);
             media = convertAdaptationToMediaInfo(manifest, adaptations[periodId][idx]);
 
-            if (media) {
+            if (type === 'embeddedText') {
+                var accessibilityLength = media.accessibility.length;
+                for (j = 0; j < accessibilityLength; j++) {
+                    if (!media) {
+                        continue;
+                    }
+                    var accessibility = media.accessibility[j];
+                    if (accessibility.indexOf('cea-608:') === 0) {
+                        var value = accessibility.substring(8);
+                        var parts = value.split(';');
+                        if (parts[0].substring(0, 2) === 'CC') {
+                            for (j = 0; j < parts.length; j++) {
+                                if (!media) {
+                                    media = convertAdaptationToMediaInfo.call(this, manifest, adaptations[periodId][idx]);
+                                }
+                                convertVideoInfoToEmbeddedTextInfo(media, parts[j].substring(0, 3), parts[j].substring(4));
+                                mediaArr.push(media);
+                                media = null;
+                            }
+                        } else {
+                            for (j = 0; j < parts.length; j++) { // Only languages for CC1, CC2, ...
+                                if (!media) {
+                                    media = convertAdaptationToMediaInfo.call(this, manifest, adaptations[periodId][idx]);
+                                }
+                                convertVideoInfoToEmbeddedTextInfo(media, 'CC' + (j + 1), parts[j]);
+                                mediaArr.push(media);
+                                media = null;
+                            }
+                        }
+                    } else if (accessibility.indexOf('cea-608') === 0) { // Nothing known. We interpret it as CC1=eng
+                        convertVideoInfoToEmbeddedTextInfo(media, 'CC1', 'eng');
+                        mediaArr.push(media);
+                        media = null;
+                    }
+                }
+            }
+            if (media && type !== 'embeddedText') {
                 mediaArr.push(media);
             }
         }
@@ -378,4 +437,5 @@ function DashAdapter() {
     return instance;
 }
 
+DashAdapter.__dashjs_factory_name = 'DashAdapter';
 export default FactoryMaker.getSingletonFactory(DashAdapter);

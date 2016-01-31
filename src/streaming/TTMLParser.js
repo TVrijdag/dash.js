@@ -29,6 +29,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 import FactoryMaker from '../core/FactoryMaker.js';
+import X2JS from '../../externals/xml2json.js';
 
 const SECONDS_IN_HOUR = 60 * 60; // Expression of an hour in seconds
 const SECONDS_IN_MIN = 60; // Expression of a minute in seconds
@@ -531,7 +532,7 @@ function TTMLParser() {
         // Separate the values in pairs.
         var hexMatrice = hex.match(/.{2}/g);
         // Convert the alpha value in decimal between 0 and 1.
-        var alpha = parseFloat(parseInt((parseInt(hexMatrice[3], 16) / 255) * 1000) / 1000);
+        var alpha = parseFloat(parseInt((parseInt(hexMatrice[3], 16) / 255) * 1000, 10) / 1000);
         // Get the standard RGB value.
         var rgb = hexMatrice.slice(0, 3).map(function (i) {
             return parseInt(i, 16);
@@ -1166,5 +1167,5 @@ function TTMLParser() {
     setup();
     return instance;
 }
-
+TTMLParser.__dashjs_factory_name = 'TTMLParser';
 export default FactoryMaker.getSingletonFactory(TTMLParser);

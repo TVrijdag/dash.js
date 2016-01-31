@@ -29,7 +29,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 import SwitchRequest from '../SwitchRequest.js';
-import AbrController from '../../controllers/AbrController.js';
+import MediaPlayerModel from '../../models/MediaPlayerModel.js';
 import FactoryMaker from '../../../core/FactoryMaker.js';
 import Debug from '../../../core/Debug.js';
 
@@ -43,11 +43,13 @@ function AbandonRequestsRule(/*config*/) {
 
     let instance,
         fragmentDict,
-        abandonDict;
+        abandonDict,
+        mediaPlayerModel;
 
     function setup() {
         fragmentDict = {};
         abandonDict = {};
+        mediaPlayerModel = MediaPlayerModel(context).getInstance();
     }
 
     function setFragmentRequestDict(type, id) {
@@ -81,7 +83,7 @@ function AbandonRequestsRule(/*config*/) {
                 fragmentInfo.segmentDuration = req.duration;
                 fragmentInfo.bytesTotal = req.bytesTotal;
                 fragmentInfo.id = req.index;
-                //log("XXX FRAG ID : " ,fragmentInfo.id, " *****************");
+                //log("FRAG ID : " ,fragmentInfo.id, " *****************");
             }
             //update info base on subsequent progress events until completed.
             fragmentInfo.bytesLoaded = req.bytesLoaded;
@@ -92,13 +94,13 @@ function AbandonRequestsRule(/*config*/) {
 
                 fragmentInfo.measuredBandwidthInKbps = Math.round(fragmentInfo.bytesLoaded * 8 / fragmentInfo.elapsedTime);
                 fragmentInfo.estimatedTimeOfDownload = (fragmentInfo.bytesTotal * 8 * 0.001 / fragmentInfo.measuredBandwidthInKbps).toFixed(2);
-                //log("XXX","id: ",fragmentInfo.id,  "kbps: ", fragmentInfo.measuredBandwidthInKbps, "etd: ",fragmentInfo.estimatedTimeOfDownload, "et: ", fragmentInfo.elapsedTime/1000);
+                //log("id: ",fragmentInfo.id,  "kbps: ", fragmentInfo.measuredBandwidthInKbps, "etd: ",fragmentInfo.estimatedTimeOfDownload, "et: ", fragmentInfo.elapsedTime/1000);
 
                 if (fragmentInfo.estimatedTimeOfDownload < (fragmentInfo.segmentDuration * ABANDON_MULTIPLIER) || representationInfo.quality === 0) {
                     callback(switchRequest);
                     return;
                 }else if (!abandonDict.hasOwnProperty(fragmentInfo.id)) {
-                    var newQuality = abrController.getQualityForBitrate(mediaInfo, fragmentInfo.measuredBandwidthInKbps * AbrController.BANDWIDTH_SAFETY);
+                    var newQuality = abrController.getQualityForBitrate(mediaInfo, fragmentInfo.measuredBandwidthInKbps * mediaPlayerModel.getBandwidthSafetyFactor());
                     switchRequest = SwitchRequest(context).create(newQuality, SwitchRequest.STRONG);
                     abandonDict[fragmentInfo.id] = fragmentInfo;
                     log('AbandonRequestsRule ( ', mediaType, 'frag id',fragmentInfo.id,') is asking to abandon and switch to quality to ', newQuality, ' measured bandwidth was', fragmentInfo.measuredBandwidthInKbps);
@@ -127,4 +129,5 @@ function AbandonRequestsRule(/*config*/) {
     return instance;
 }
 
+AbandonRequestsRule.__dashjs_factory_name = 'AbandonRequestsRule';
 export default FactoryMaker.getClassFactory(AbandonRequestsRule);

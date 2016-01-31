@@ -29,44 +29,45 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-import SwitchRequest from '../SwitchRequest.js';
 import FactoryMaker from '../../../core/FactoryMaker.js';
 
-function LiveEdgeWithTimeSynchronizationRule(config) {
+function HandlerHelpers() {
+    return {
+        reconstructFullMetricName: function (key, n, type) {
+            var mn = key;
 
-    let instance;
-    let context = this.context;
-    let timelineConverter = config.timelineConverter;
+            if (n) {
+                mn += '(' + n;
 
-    // if the time has been synchronized correctly (which it must have been
-    // to end up executing this rule), the last entry in the DVR window
-    // should be the live edge. if that is incorrect for whatever reason,
-    // playback will fail to start and some other action should be taken.
-    function execute(rulesContext, callback) {
-        var representationInfo = rulesContext.getTrackInfo();
-        var liveEdgeInitialSearchPosition = representationInfo.DVRWindow.end;
-        var p = SwitchRequest.DEFAULT;
+                if (type && type.length) {
+                    mn += ',' + type;
+                }
 
-        if (representationInfo.useCalculatedLiveEdgeTime) {
-            //By default an expected live edge is the end of the last segment.
-            // A calculated live edge ('end' property of a range returned by TimelineConverter.calcSegmentAvailabilityRange)
-            // is used as an initial point for finding the actual live edge.
-            // But for SegmentTimeline mpds (w/o a negative @r) the end of the
-            // last segment is the actual live edge. At the same time, calculated live edge is an expected live edge.
-            // Thus, we need to switch an expected live edge and actual live edge for SegmentTimelne streams.
-            var actualLiveEdge = timelineConverter.getExpectedLiveEdge();
-            timelineConverter.setExpectedLiveEdge(liveEdgeInitialSearchPosition);
-            callback(SwitchRequest(context).create(actualLiveEdge, p));
-        } else {
-            callback(SwitchRequest(context).create(liveEdgeInitialSearchPosition, p));
+                mn += ')';
+            }
+
+            return mn;
+        },
+
+        validateN: function (n_ms) {
+            if (!n_ms) {
+                throw 'missing n';
+            }
+
+            if (isNaN(n_ms)) {
+                throw 'n is NaN';
+            }
+
+            // n is a positive integer is defined to refer to the metric
+            // in which the buffer level is recorded every n ms.
+            if (n_ms < 0) {
+                throw 'n must be positive';
+            }
+
+            return n_ms;
         }
-    }
-
-    instance = {
-        execute: execute
     };
-
-    return instance;
 }
 
-export default FactoryMaker.getClassFactory(LiveEdgeWithTimeSynchronizationRule);
+HandlerHelpers.__dashjs_factory_name = 'HandlerHelpers';
+export default FactoryMaker.getSingletonFactory(HandlerHelpers);

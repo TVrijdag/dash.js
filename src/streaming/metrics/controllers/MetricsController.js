@@ -28,67 +28,68 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
+
 import FactoryMaker from '../../../core/FactoryMaker.js';
-import BufferLevelRule from './BufferLevelRule.js';
-import PlaybackTimeRule from './PlaybackTimeRule.js';
-import TextSourceBuffer from '../../TextSourceBuffer.js';
-import MetricsModel from '../../models/MetricsModel.js';
-import DashAdapter from '../../../dash/DashAdapter.js';
-import DashMetricsExtensions from '../../../dash/extensions/DashMetricsExtensions.js';
-import SourceBufferExtensions from '../../extensions/SourceBufferExtensions.js';
-import VirtualBuffer from '../../utils/VirtualBuffer.js';
+import RangeController from './RangeController.js';
+import ReportingController from './ReportingController.js';
+import MetricsHandlersController from './MetricsHandlersController.js';
 
-const FRAGMENTS_TO_SCHEDULE_RULES = 'fragmentsToScheduleRules';
-const NEXT_FRAGMENT_RULES = 'nextFragmentRules';
+function MetricsController(config) {
 
-function ScheduleRulesCollection() {
+    let metricsHandlersController,
+        reportingController,
+        rangeController,
+        instance;
 
     let context = this.context;
 
-    let instance,
-        fragmentsToScheduleRules,
-        nextFragmentRules;
+    function initialize(metricsEntry) {
+        try {
+            rangeController = RangeController(context).create({
+                mediaElement: config.mediaElement
+            });
 
-    function initialize() {
-        fragmentsToScheduleRules = [];
-        nextFragmentRules = [];
+            rangeController.initialize(metricsEntry.Range);
 
-        fragmentsToScheduleRules.push(BufferLevelRule(context).create({
-            metricsExt: DashMetricsExtensions(context).getInstance(),
-            metricsModel: MetricsModel(context).getInstance(),
-            textSourceBuffer: TextSourceBuffer(context).getInstance()
-        }));
-        nextFragmentRules.push(PlaybackTimeRule(context).create({
-            adapter: DashAdapter(context).getInstance(),
-            sourceBufferExt: SourceBufferExtensions(context).getInstance(),
-            virtualBuffer: VirtualBuffer(context).getInstance(),
-            textSourceBuffer: TextSourceBuffer(context).getInstance()
+            reportingController = ReportingController(context).create({
+                log: config.log
+            });
 
-        }));
+            reportingController.initialize(metricsEntry.Reporting, rangeController);
+
+            metricsHandlersController = MetricsHandlersController(context).create({
+                log: config.log,
+                eventBus: config.eventBus,
+            });
+
+            metricsHandlersController.initialize(metricsEntry.metrics, reportingController);
+        } catch (e) {
+            reset();
+            throw e;
+        }
     }
 
-    function getRules(type) {
-        switch (type) {
-            case FRAGMENTS_TO_SCHEDULE_RULES:
-                return fragmentsToScheduleRules;
-            case NEXT_FRAGMENT_RULES:
-                return nextFragmentRules;
-            default:
-                return null;
+    function reset() {
+        if (metricsHandlersController) {
+            metricsHandlersController.reset();
+        }
+
+        if (reportingController) {
+            reportingController.reset();
+        }
+
+        if (rangeController) {
+            rangeController.reset();
         }
     }
 
     instance = {
         initialize: initialize,
-        getRules: getRules
+        reset:      reset
     };
 
     return instance;
 }
 
-let factory = FactoryMaker.getSingletonFactory(ScheduleRulesCollection);
-
-factory.FRAGMENTS_TO_SCHEDULE_RULES = FRAGMENTS_TO_SCHEDULE_RULES;
-factory.NEXT_FRAGMENT_RULES = NEXT_FRAGMENT_RULES;
-
-export default factory;
+MetricsController.__dashjs_factory_name = 'MetricsController';
+export default FactoryMaker.getClassFactory(MetricsController);

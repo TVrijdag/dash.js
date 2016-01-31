@@ -33,11 +33,9 @@ import EventBus from './../core/EventBus.js';
 import Events from './../core/events/Events.js';
 import FactoryMaker from '../core/FactoryMaker.js';
 import Debug from '../core/Debug.js';
+import MediaPlayerModel from './models/MediaPlayerModel.js';
 
 function FragmentLoader(config) {
-
-    const RETRY_ATTEMPTS = 3;
-    const RETRY_INTERVAL = 3;
 
     let context = this.context;
     let log = Debug(context).getInstance().log;
@@ -46,6 +44,8 @@ function FragmentLoader(config) {
     let metricsModel = config.metricsModel;
     let errHandler = config.errHandler;
     let requestModifierExt = config.requestModifierExt;
+
+    let mediaPlayerModel = MediaPlayerModel(context).getInstance();
 
     let instance,
         xhrs;
@@ -56,23 +56,14 @@ function FragmentLoader(config) {
         var firstProgress = true;
         var needFailureReport = true;
         var lastTraceTime = null;
+        var lastTraceReceivedCount = 0;
         var self = this;
         var handleLoaded = function (requestVO, succeeded) {
             needFailureReport = false;
 
             var currentTime = new Date();
-            var bytes = req.response;
-
-            var httpRequestMetrics = null;
-
             var latency,
                 download;
-
-            traces.push({
-                s: currentTime,
-                d: currentTime.getTime() - lastTraceTime.getTime(),
-                b: [bytes ? bytes.byteLength : 0]
-            });
 
             if (!requestVO.firstByteDate) {
                 requestVO.firstByteDate = requestVO.requestStartDate;
@@ -84,7 +75,7 @@ function FragmentLoader(config) {
 
             log((succeeded ? 'loaded ' : 'failed ') + requestVO.mediaType + ':' + requestVO.type + ':' + requestVO.startTime + ' (' + req.status + ', ' + latency + 'ms, ' + download + 'ms)');
 
-            httpRequestMetrics = metricsModel.addHttpRequest(
+            metricsModel.addHttpRequest(
                 request.mediaType,
                 null,
                 request.type,
@@ -96,30 +87,13 @@ function FragmentLoader(config) {
                 requestVO.requestEndDate,
                 req.status,
                 request.duration,
-                req.getAllResponseHeaders()
+                req.getAllResponseHeaders(),
+                succeeded ? traces : null
             );
-
-            if (succeeded) {
-                // trace is only for successful requests
-                traces.forEach(function (trace) {
-                    metricsModel.appendHttpTrace(httpRequestMetrics,
-                        trace.s,
-                        trace.d,
-                        trace.b);
-                });
-            }
         };
-
 
         xhrs.push(req);
         request.requestStartDate = new Date();
-
-        traces.push({
-            s: request.requestStartDate,
-            d: 0,
-            b: [0]
-        });
-
         lastTraceTime = request.requestStartDate;
 
         req.open('GET', requestModifierExt.modifyRequestURL(request.url), true);
@@ -137,9 +111,10 @@ function FragmentLoader(config) {
 
         req.onprogress = function (event) {
             var currentTime = new Date();
+
             if (firstProgress) {
                 firstProgress = false;
-                if (!event.lengthComputable || (event.lengthComputable && event.total != event.loaded)) {
+                if (!event.lengthComputable || (event.lengthComputable && event.total !== event.loaded)) {
                     request.firstByteDate = currentTime;
                 }
             }
@@ -150,12 +125,13 @@ function FragmentLoader(config) {
             }
 
             traces.push({
-                s: currentTime,
+                s: lastTraceTime,
                 d: currentTime.getTime() - lastTraceTime.getTime(),
-                b: [req.response ? req.response.byteLength : 0]
+                b: [event.loaded ? event.loaded - lastTraceReceivedCount : 0]
             });
 
             lastTraceTime = currentTime;
+            lastTraceReceivedCount = event.loaded;
             eventBus.trigger(Events.LOADING_PROGRESS, {request: request});
         };
 
@@ -177,11 +153,11 @@ function FragmentLoader(config) {
             handleLoaded(request, false);
 
             if (remainingAttempts > 0) {
-                log('Failed loading fragment: ' + request.mediaType + ':' + request.type + ':' + request.startTime + ', retry in ' + RETRY_INTERVAL + 'ms' + ' attempts: ' + remainingAttempts);
+                log('Failed loading fragment: ' + request.mediaType + ':' + request.type + ':' + request.startTime + ', retry in ' + mediaPlayerModel.getFragmentRetryInterval() + 'ms' + ' attempts: ' + remainingAttempts);
                 remainingAttempts--;
                 setTimeout(function () {
                     doLoad.call(self, request, remainingAttempts);
-                }, RETRY_INTERVAL);
+                }, mediaPlayerModel.getFragmentRetryInterval());
             } else {
                 log('Failed loading fragment: ' + request.mediaType + ':' + request.type + ':' + request.startTime + ' no retry attempts left');
                 errHandler.downloadError('content', request.url, req);
@@ -235,7 +211,7 @@ function FragmentLoader(config) {
                 sender: this
             });
         } else {
-            doLoad(req, RETRY_ATTEMPTS);
+            doLoad(req, mediaPlayerModel.getFragmentRetryAttempts());
         }
     }
 
@@ -263,4 +239,5 @@ function FragmentLoader(config) {
     return instance;
 }
 
+FragmentLoader.__dashjs_factory_name = 'FragmentLoader';
 export default FactoryMaker.getClassFactory(FragmentLoader);

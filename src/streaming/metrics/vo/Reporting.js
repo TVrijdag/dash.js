@@ -28,61 +28,16 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-
-import FactoryMaker from '../../../core/FactoryMaker.js';
-import TimelineConverter from '../../../dash/TimelineConverter.js';
-import LiveEdgeBinarySearchRule from './LiveEdgeBinarySearchRule.js';
-import LiveEdgeWithTimeSynchronizationRule from './LiveEdgeWithTimeSynchronizationRule.js';
-import DashAdapter from '../../../dash/DashAdapter.js';
-
-
-const TIME_SYNCHRONIZED_RULES = 'withAccurateTimeSourceRules';
-const BEST_GUESS_RULES = 'bestGuestRules';
-
-function SynchronizationRulesCollection() {
-
-    let context = this.context;
-
-    let instance,
-        withAccurateTimeSourceRules,
-        bestGuestRules;
-
-    function initialize() {
-        withAccurateTimeSourceRules = [];
-        bestGuestRules = [];
-
-        withAccurateTimeSourceRules.push(LiveEdgeWithTimeSynchronizationRule(context).create({
-            timelineConverter: TimelineConverter(context).getInstance()
-        }));
-
-        bestGuestRules.push(LiveEdgeBinarySearchRule(context).create({
-            timelineConverter: TimelineConverter(context).getInstance(),
-            adapter: DashAdapter(context).getInstance()
-        }));
+/**
+ * @class
+ * @ignore
+ */
+class Reporting {
+    constructor() {
+        // Reporting is a DescriptorType and doesn't have any additional fields
+        this.schemeIdUri = '';
+        this.value = '';
     }
-
-    function getRules(type) {
-        switch (type) {
-            case TIME_SYNCHRONIZED_RULES:
-                return withAccurateTimeSourceRules;
-            case BEST_GUESS_RULES:
-                return bestGuestRules;
-            default:
-                return null;
-        }
-    }
-
-    instance = {
-        initialize: initialize,
-        getRules: getRules
-    };
-
-    return instance;
 }
 
-let factory = FactoryMaker.getSingletonFactory(SynchronizationRulesCollection);
-
-factory.TIME_SYNCHRONIZED_RULES = TIME_SYNCHRONIZED_RULES;
-factory.BEST_GUESS_RULES = BEST_GUESS_RULES;
-
-export default factory;
+export default Reporting;

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
  * rights, including patent rights, and no such rights are granted under this license.
@@ -31,6 +31,7 @@
 import SwitchRequest from '../SwitchRequest.js';
 import BufferController from '../../controllers/BufferController.js';
 import AbrController from '../../controllers/AbrController.js';
+import MediaPlayerModel from '../../models/MediaPlayerModel.js';
 import HTTPRequest from '../../vo/metrics/HTTPRequest.js';
 import FactoryMaker from '../../../core/FactoryMaker.js';
 import Debug from '../../../core/Debug.js';
@@ -46,7 +47,13 @@ function ThroughputRule(config) {
     let metricsModel = config.metricsModel;
 
     let instance,
-        throughputArray;
+        throughputArray,
+        mediaPlayerModel;
+
+    function setup() {
+        throughputArray = [];
+        mediaPlayerModel = MediaPlayerModel(context).getInstance();
+    }
 
     function storeLastRequestThroughputByType(type, lastRequestThroughput) {
         throughputArray[type] = throughputArray[type] || [];
@@ -78,11 +85,12 @@ function ThroughputRule(config) {
             arr.shift();
         }
 
-        return (averageThroughput / 1000 ) * AbrController.BANDWIDTH_SAFETY;
+        return (averageThroughput / 1000 ) * mediaPlayerModel.getBandwidthSafetyFactor();
     }
 
     function execute (rulesContext, callback) {
         var downloadTime;
+        var bytes;
         var averageThroughput;
         var lastRequestThroughput;
 
@@ -106,10 +114,14 @@ function ThroughputRule(config) {
 
         }
 
-        downloadTime = (lastRequest.tfinish.getTime() - lastRequest.tresponse.getTime()) / 1000;
-
         if (lastRequest.trace.length) {
-            lastRequestThroughput = Math.round((lastRequest.trace[lastRequest.trace.length - 1].b * 8 ) / downloadTime);
+            downloadTime = (lastRequest._tfinish.getTime() - lastRequest.tresponse.getTime()) / 1000;
+
+            bytes = lastRequest.trace.reduce(function (a, b) {
+                return a + b.b[0];
+            }, 0);
+
+            lastRequestThroughput = Math.round(bytes * 8) / downloadTime;
             storeLastRequestThroughputByType(mediaType, lastRequestThroughput);
         }
 
@@ -135,7 +147,7 @@ function ThroughputRule(config) {
     }
 
     function reset() {
-        throughputArray = [];
+        setup();
     }
 
     instance = {
@@ -143,8 +155,9 @@ function ThroughputRule(config) {
         reset: reset
     };
 
-    reset();
+    setup();
     return instance;
 }
 
+ThroughputRule.__dashjs_factory_name = 'ThroughputRule';
 export default FactoryMaker.getClassFactory(ThroughputRule);
