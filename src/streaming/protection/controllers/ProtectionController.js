@@ -28,21 +28,6 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-
-/**
- * Provides access to media protection information and functionality.  Each
- * ProtectionController manages a single {@link MediaPlayer.models.ProtectionModel}
- * which encapsulates a set of protection information (EME APIs, selected key system,
- * key sessions).  The APIs of ProtectionController mostly align with the latest EME
- * APIs.  Key system selection is mostly automated when combined with app-overrideable
- * functionality provided in {@link ProtectionExtensions}.
- *
- * @class ProtectionController
- * @todo ProtectionController does almost all of its tasks automatically after init() is
- * called.  Applications might want more control over this process and want to go through
- * each step manually (key system selection, session creation, session maintenance).
- */
-
 import CommonEncryption from '../CommonEncryption.js';
 import Events from '../../../core/events/Events.js';
 import MediaCapability from '../vo/MediaCapability.js';
@@ -50,10 +35,23 @@ import KeySystemConfiguration from '../vo/KeySystemConfiguration.js';
 import FactoryMaker from '../../../core/FactoryMaker.js';
 import Protection from '../Protection.js';
 
+/**
+ * @Module ProtectionController
+ * @description Provides access to media protection information and functionality.  Each
+ * ProtectionController manages a single {@link MediaPlayer.models.ProtectionModel}
+ * which encapsulates a set of protection information (EME APIs, selected key system,
+ * key sessions).  The APIs of ProtectionController mostly align with the latest EME
+ * APIs.  Key system selection is mostly automated when combined with app-overrideable
+ * functionality provided in {@link ProtectionKeyController}.
+ * @todo ProtectionController does almost all of its tasks automatically after init() is
+ * called.  Applications might want more control over this process and want to go through
+ * each step manually (key system selection, session creation, session maintenance).
+ */
+
 function ProtectionController(config) {
 
     let context = this.context;
-    let protectionExt = config.protectionExt;
+    let protectionKeyController = config.protectionKeyController;
     let protectionModel = config.protectionModel;
     let adapter = config.adapter;
     let eventBus = config.eventBus;
@@ -70,14 +68,12 @@ function ProtectionController(config) {
         keySystem;
 
     function setup() {
-        keySystems = protectionExt.getKeySystems();
+        keySystems = protectionKeyController.getKeySystems();
         pendingNeedKeyData = [];
         initialized = false;
         sessionType = 'temporary';
 
         Events.extend(Protection.events);
-        eventBus.on(Events.NEED_KEY, onNeedKey, this);
-        eventBus.on(Events.INTERNAL_KEY_MESSAGE, onKeyMessage, this);
     }
 
     /**
@@ -89,7 +85,7 @@ function ProtectionController(config) {
      * {@link module:MediaPlayer#retrieveManifest}
      * @param {StreamInfo} [aInfo] audio stream information
      * @param {StreamInfo} [vInfo] video stream information
-     * @memberof ProtectionController
+     * @memberof module:ProtectionController
      * @instance
      * @todo This API will change when we have better support for allowing applications
      * to select different adaptation sets for playback.  Right now it is clunky for
@@ -118,7 +114,7 @@ function ProtectionController(config) {
 
             // ContentProtection elements are specified at the AdaptationSet level, so the CP for audio
             // and video will be the same.  Just use one valid MediaInfo object
-            var supportedKS = protectionExt.getSupportedKeySystemsFromContentProtection(mediaInfo.contentProtection);
+            var supportedKS = protectionKeyController.getSupportedKeySystemsFromContentProtection(mediaInfo.contentProtection);
             if (supportedKS && supportedKS.length > 0) {
                 selectKeySystem(supportedKS, true);
             }
@@ -132,7 +128,7 @@ function ProtectionController(config) {
      * the MPD or from the PSSH box in the media
      *
      * @param {ArrayBuffer} initData the initialization data
-     * @memberof ProtectionController
+     * @memberof module:ProtectionController
      * @instance
      * @fires ProtectionController#KeySessionCreated
      * @todo In older versions of the EME spec, there was a one-to-one relationship between
@@ -147,8 +143,8 @@ function ProtectionController(config) {
             // Check for duplicate initData
             var currentInitData = protectionModel.getAllInitData();
             for (var i = 0; i < currentInitData.length; i++) {
-                if (protectionExt.initDataEquals(initDataForKS, currentInitData[i])) {
-                    log('Ignoring initData because we have already seen it!');
+                if (protectionKeyController.initDataEquals(initDataForKS, currentInitData[i])) {
+                    log('DRM: Ignoring initData because we have already seen it!');
                     return;
                 }
             }
@@ -167,7 +163,7 @@ function ProtectionController(config) {
      * essentially creates a new key session
      *
      * @param {string} sessionID
-     * @memberof ProtectionController
+     * @memberof module:ProtectionController
      * @instance
      * @fires ProtectionController#KeySessionCreated
      */
@@ -182,7 +178,7 @@ function ProtectionController(config) {
      *
      * @param {SessionToken} sessionToken the session
      * token
-     * @memberof ProtectionController
+     * @memberof module:ProtectionController
      * @instance
      * @fires ProtectionController#KeySessionRemoved
      * @fires ProtectionController#KeySessionClosed
@@ -197,7 +193,7 @@ function ProtectionController(config) {
      *
      * @param {SessionToken} sessionToken the session
      * token
-     * @memberof ProtectionController
+     * @memberof module:ProtectionController
      * @instance
      * @fires ProtectionController#KeySessionClosed
      */
@@ -212,7 +208,7 @@ function ProtectionController(config) {
      *
      * @param {ArrayBuffer} serverCertificate a CDM-specific license server
      * certificate
-     * @memberof ProtectionController
+     * @memberof module:ProtectionController
      * @instance
      * @fires ProtectionController#ServerCertificateUpdated
      */
@@ -227,16 +223,18 @@ function ProtectionController(config) {
      *
      * @param {HTMLMediaElement} element the media element to which the protection
      * system should be associated
-     * @memberof ProtectionController
+     * @memberof module:ProtectionController
      * @instance
      */
     function setMediaElement(element) {
         if (element) {
             protectionModel.setMediaElement(element);
             eventBus.on(Events.NEED_KEY, onNeedKey, this);
+            eventBus.on(Events.INTERNAL_KEY_MESSAGE, onKeyMessage, this);
         } else if (element === null) {
             protectionModel.setMediaElement(element);
             eventBus.off(Events.NEED_KEY, onNeedKey, this);
+            eventBus.off(Events.INTERNAL_KEY_MESSAGE, onKeyMessage, this);
         }
     }
 
@@ -245,7 +243,7 @@ function ProtectionController(config) {
      * "persistent-license".  Default is "temporary".
      *
      * @param {String} sessionType the session type
-     * @memberof ProtectionController
+     * @memberof module:ProtectionController
      * @instance
      */
     function setSessionType(value) {
@@ -258,7 +256,7 @@ function ProtectionController(config) {
      * @param {Object} data an object containing property names corresponding to
      * key system name strings (e.g. "org.w3.clearkey") and associated values
      * being instances of {@link ProtectionData}
-     * @memberof ProtectionController
+     * @memberof module:ProtectionController
      * @instance
      */
     function setProtectionData(data) {
@@ -271,13 +269,11 @@ function ProtectionController(config) {
      * will simply be unloaded and not deleted.  Additionally, if this protection set is
      * associated with a HTMLMediaElement, it will be detached from that element.
      *
-     * @memberof ProtectionController
+     * @memberof module:ProtectionController
      * @instance
      */
     function reset() {
         setMediaElement(null);
-        eventBus.off(Events.INTERNAL_KEY_MESSAGE, onKeyMessage, this);
-        eventBus.off(Events.NEED_KEY, onNeedKey, this);
 
         keySystem = undefined;//TODO-Refactor look at why undefined is needed for this. refactor
 
@@ -336,7 +332,7 @@ function ProtectionController(config) {
                                 eventBus.trigger(Events.KEY_SYSTEM_SELECTED, {error: 'DRM: KeySystem Access Denied! -- ' + event.error});
                             }
                         } else {
-                            log('KeySystem Access Granted');
+                            log('DRM: KeySystem Access Granted');
                             eventBus.trigger(Events.KEY_SYSTEM_SELECTED, {data: event.data});
                             createKeySession(supportedKS[ksIdx].initData);
                         }
@@ -369,7 +365,7 @@ function ProtectionController(config) {
                     }
                 } else {
                     keySystemAccess = event.data;
-                    log('KeySystem Access Granted (' + keySystemAccess.keySystem.systemString + ')!  Selecting key system...');
+                    log('DRM: KeySystem Access Granted (' + keySystemAccess.keySystem.systemString + ')!  Selecting key system...');
                     protectionModel.selectKeySystem(keySystemAccess);
                 }
             };
@@ -408,6 +404,7 @@ function ProtectionController(config) {
     }
 
     function onKeyMessage(e) {
+        log('DRM: onKeyMessage');
         if (e.error) {
             log(e.error);
             return;
@@ -421,7 +418,7 @@ function ProtectionController(config) {
         var sessionToken = keyMessage.sessionToken;
         var protData = getProtData(keySystem);
         var keySystemString = keySystem.systemString;
-        var licenseServerData = protectionExt.getLicenseServer(keySystem, protData, messageType);
+        var licenseServerData = protectionKeyController.getLicenseServer(keySystem, protData, messageType);
         var eventData = { sessionToken: sessionToken, messageType: messageType };
 
         // Message not destined for license server
@@ -432,8 +429,8 @@ function ProtectionController(config) {
         }
 
         // Perform any special handling for ClearKey
-        if (protectionExt.isClearKey(keySystem)) {
-            var clearkeys = protectionExt.processClearKeyLicenseRequest(protData, message);
+        if (protectionKeyController.isClearKey(keySystem)) {
+            var clearkeys = protectionKeyController.processClearKeyLicenseRequest(protData, message);
             if (clearkeys)  {
                 log('DRM: ClearKey license request handled by application!');
                 sendLicenseRequestCompleteEvent(eventData);
@@ -521,6 +518,7 @@ function ProtectionController(config) {
     }
 
     function onNeedKey(event) {
+        log('DRM: onNeedKey');
         // Ignore non-cenc initData
         if (event.key.initDataType !== 'cenc') {
             log('DRM:  Only \'cenc\' initData is supported!  Ignoring initData of type: ' + event.key.initDataType);
@@ -534,9 +532,11 @@ function ProtectionController(config) {
             abInitData = abInitData.buffer;
         }
 
-        var supportedKS = protectionExt.getSupportedKeySystems(abInitData);
+        log('DRM: initData:', String.fromCharCode.apply(null, new Uint8Array(abInitData)));
+
+        var supportedKS = protectionKeyController.getSupportedKeySystems(abInitData);
         if (supportedKS.length === 0) {
-            log('Received needkey event with initData, but we don\'t support any of the key systems!');
+            log('DRM: Received needkey event with initData, but we don\'t support any of the key systems!');
             return;
         }
 

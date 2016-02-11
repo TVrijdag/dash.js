@@ -40,15 +40,18 @@ function FragmentLoader(config) {
     let context = this.context;
     let log = Debug(context).getInstance().log;
     let eventBus = EventBus(context).getInstance();
-
     let metricsModel = config.metricsModel;
     let errHandler = config.errHandler;
-    let requestModifierExt = config.requestModifierExt;
-
-    let mediaPlayerModel = MediaPlayerModel(context).getInstance();
+    let requestModifier = config.requestModifier;
 
     let instance,
+        mediaPlayerModel,
         xhrs;
+
+    function setup() {
+        mediaPlayerModel = MediaPlayerModel(context).getInstance();
+        xhrs = [];
+    }
 
     function doLoad(request, remainingAttempts) {
         var req = new XMLHttpRequest();
@@ -96,10 +99,10 @@ function FragmentLoader(config) {
         request.requestStartDate = new Date();
         lastTraceTime = request.requestStartDate;
 
-        req.open('GET', requestModifierExt.modifyRequestURL(request.url), true);
+        req.open('GET', requestModifier.modifyRequestURL(request.url), true);
         req.withCredentials = context.withCredentials === true;
         req.responseType = 'arraybuffer';
-        req = requestModifierExt.modifyRequestHeader(req);
+        req = requestModifier.modifyRequestHeader(req);
         /*
          req.setRequestHeader("Cache-Control", "no-cache");
          req.setRequestHeader("Pragma", "no-cache");
@@ -202,7 +205,6 @@ function FragmentLoader(config) {
     }
 
     function load(req) {
-        xhrs = xhrs || [];
         if (!req) {
             eventBus.trigger(Events.LOADING_COMPLETED, {
                 request: req,
@@ -223,6 +225,7 @@ function FragmentLoader(config) {
         for (i = 0; i < ln; i++) {
             req = xhrs[i];
             xhrs[i] = null;
+            if (!req) continue;
             req.abort();
             req = null;
         }
@@ -235,6 +238,8 @@ function FragmentLoader(config) {
         load: load,
         abort: abort
     };
+
+    setup();
 
     return instance;
 }

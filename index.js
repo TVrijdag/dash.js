@@ -29,27 +29,24 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-import FactoryMaker from '../../core/FactoryMaker.js';
+import MediaPlayer from './src/streaming/MediaPlayer.js';
+import Protection from './src/streaming/protection/Protection.js';
+import MetricsReporting from './src/streaming/metrics/MetricsReporting.js';
+import MediaPlayerFactory from './src/streaming/MediaPlayerFactory.js';
 
-function RequestModifierExtensions() {
 
-    let instance;
+// Shove both of these into the global scope
+var context = window || global;
 
-    function modifyRequestURL(url) {
-        return url;
-    }
-
-    function modifyRequestHeader(request) {
-        return request;
-    }
-
-    instance = {
-        modifyRequestURL: modifyRequestURL,
-        modifyRequestHeader: modifyRequestHeader
-    };
-
-    return instance;
+var dashjs = context.dashjs;
+if (!dashjs) {
+    dashjs = context.dashjs = {};
 }
 
-RequestModifierExtensions.__dashjs_factory_name = 'RequestModifierExtensions';
-export default FactoryMaker.getSingletonFactory(RequestModifierExtensions);
+dashjs.MediaPlayer = MediaPlayer;
+dashjs.Protection = Protection;
+dashjs.MetricsReporting = MetricsReporting;
+dashjs.MediaPlayerFactory = MediaPlayerFactory;
+
+export default dashjs;
+export { MediaPlayer, Protection, MetricsReporting, MediaPlayerFactory };

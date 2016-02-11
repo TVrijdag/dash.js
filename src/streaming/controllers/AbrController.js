@@ -31,6 +31,7 @@
 
 import SwitchRequest from '../rules/SwitchRequest';
 import BitrateInfo from '../vo/BitrateInfo.js';
+import DOMStorage from '../utils/DOMStorage.js';
 import ABRRulesCollection from '../rules/abr/ABRRulesCollection.js';
 import MediaPlayerModel from '../models/MediaPlayerModel.js';
 import FragmentModel from '../models/FragmentModel.js';
@@ -38,7 +39,7 @@ import EventBus from '../../core/EventBus.js';
 import Events from '../../core/events/Events.js';
 import FactoryMaker from '../../core/FactoryMaker.js';
 import ManifestModel from '../models/ManifestModel.js';
-import DashManifestExtensions from '../../dash/extensions/DashManifestExtensions.js';
+import DashManifestModel from '../../dash/models/DashManifestModel.js';
 import VideoModel from '../models/VideoModel.js';
 
 const ABANDON_LOAD = 'abandonload';
@@ -67,9 +68,10 @@ function AbrController() {
         abandonmentTimeout,
         limitBitrateByPortal,
         manifestModel,
-        manifestExt,
+        dashManifestModel,
         videoModel,
-        mediaPlayerModel;
+        mediaPlayerModel,
+        domStorage;
 
     function setup() {
         autoSwitchBitrate = {video: true, audio: true};
@@ -82,9 +84,10 @@ function AbrController() {
         abandonmentStateDict = {};
         streamProcessorDict = {};
         limitBitrateByPortal = false;
+        domStorage = DOMStorage(context).getInstance();
         mediaPlayerModel = MediaPlayerModel(context).getInstance();
         manifestModel = ManifestModel(context).getInstance();
-        manifestExt = DashManifestExtensions(context).getInstance();
+        dashManifestModel = DashManifestModel(context).getInstance();
         videoModel = VideoModel(context).getInstance();
     }
 
@@ -129,26 +132,27 @@ function AbrController() {
      * @memberof AbrController#
      */
     function getInitialBitrateFor(type) {
-        let initialBitrate;
+
+        let savedBitrate = domStorage.getSavedBitrateSettings(type);
 
         if (!bitrateDict.hasOwnProperty(type)) {
-            if (!ratioDict.hasOwnProperty(type)) {
-                bitrateDict[type] = (type === 'video') ? DEFAULT_VIDEO_BITRATE : DEFAULT_AUDIO_BITRATE;
-            } else {
-
+            if (ratioDict.hasOwnProperty(type)) {
                 let manifest = manifestModel.getValue();
-                let representation = manifestExt.getAdaptationForType(manifest, 0, type).Representation;
+                let representation = dashManifestModel.getAdaptationForType(manifest, 0, type).Representation;
 
                 if (Array.isArray(representation)) {
                     bitrateDict[type] = representation[Math.round(representation.length * ratioDict[type]) - 1].bandwidth;
                 } else {
                     bitrateDict[type] = 0;
                 }
+            } else if (!isNaN(savedBitrate)) {
+                bitrateDict[type] = savedBitrate;
+            } else {
+                bitrateDict[type] = (type === 'video') ? DEFAULT_VIDEO_BITRATE : DEFAULT_AUDIO_BITRATE;
             }
         }
 
-        initialBitrate = bitrateDict[type];
-        return initialBitrate;
+        return bitrateDict[type];
     }
 
     /**
@@ -180,7 +184,7 @@ function AbrController() {
     }
 
     //TODO  change bitrateDict structure to hold one object for video and audio with initial and max values internal.
-    // This means you need to update all the logic around intial bitrate DOMStorage, RebController etc...
+    // This means you need to update all the logic around initial bitrate DOMStorage, RebController etc...
     function setMaxAllowedBitrateFor(type, value) {
         bitrateDict.max = bitrateDict.max || {};
         bitrateDict.max[type] = value;
@@ -445,7 +449,7 @@ function AbrController() {
         let elementWidth = element.clientWidth;
         let elementHeight = element.clientHeight;
         let manifest = manifestModel.getValue();
-        let representation = manifestExt.getAdaptationForType(manifest, 0, type).Representation;
+        let representation = dashManifestModel.getAdaptationForType(manifest, 0, type).Representation;
         let newIdx = idx;
 
         if (elementWidth > 0 && elementHeight > 0) {

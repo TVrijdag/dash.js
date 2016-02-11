@@ -32,12 +32,18 @@ View the /samples folder for many other examples of embedding and using the play
 2. Run the GruntFile.js default task
     * grunt
 3. You can also target individual tasks: E.g.
+	* grunt debug (quickest build)
     * grunt dist
     * grunt release
     * grunt test
     
 
 ## Getting Started
+
+The standard setup method uses javascript to initialize and provide video details to dash.js. `MediaPlayerFactory` provides an alternative declarative setup syntax.
+
+### Standard Setup
+
 Create a video element somewhere in your html. For our purposes, make sure to set the controls property to true.
 ```html
 <video id="videoPlayer" controls="true"></video>
@@ -53,7 +59,7 @@ Now comes the good stuff. We need to create a MediaPlayer and initialize it.  We
 ``` js
 (function(){
     var url = "http://dash.edgesuite.net/envivio/Envivio-dash2/manifest.mpd";
-    var player = MediaPlayer().create(); 
+    var player = dashjs.MediaPlayer().create();
     player.initialize(document.querySelector("#videoPlayer"), url, true);
 })();
 ```
@@ -73,7 +79,7 @@ When it is all done, it should look similar to this:
         <script>
             (function(){
                 var url = "http://dash.edgesuite.net/envivio/Envivio-dash2/manifest.mpd";
-                var player = MediaPlayer().create(); 
+                var player = dashjs.MediaPlayer().create();
                 player.initialize(document.querySelector("#videoPlayer"), url, true);
             })();
         </script>
@@ -81,3 +87,40 @@ When it is all done, it should look similar to this:
 </html>
 ```
 
+### MediaPlayerFactory Setup
+
+Create a video element somewhere in your html and provide the path to your `mpd` file as src. Also ensure that your video element has the `data-dashjs-player` attribute on to it.
+```html
+<video data-dashjs-player autoplay src="http://dash.edgesuite.net/envivio/EnvivioDash3/manifest.mpd" controls="true">
+</video>
+
+```
+
+Add dash.all.min.js to the end of the body.
+```html
+<body>
+  ...
+  <script src="yourPathToDash/dash.all.min.js"></script>
+</body>
+```
+
+When it is all done, it should look similar to this:
+```html
+<!doctype html>
+<html>
+    <head>
+        <title>Dash.js Rocks</title>
+    </head>
+    <body>
+        <div>
+            <video data-dashjs-player autoplay src="http://dash.edgesuite.net/envivio/EnvivioDash3/manifest.mpd" controls="true">
+            </video>
+        </div>
+        <script src="yourPathToDash/dash.all.min.js"></script>
+    </body>
+</html>
+```
+
+## Tested With
+
+[<img src="https://cloud.githubusercontent.com/assets/7864462/12837037/452a17c6-cb73-11e5-9f39-fc96893bc9bf.png" alt="Browser Stack Logo" width="400">](https://www.browserstack.com/)

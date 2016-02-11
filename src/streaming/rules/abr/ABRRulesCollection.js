@@ -32,8 +32,11 @@ import ThroughputRule from './ThroughputRule.js';
 import BufferOccupancyRule from './BufferOccupancyRule.js';
 import InsufficientBufferRule from './InsufficientBufferRule.js';
 import AbandonRequestsRule from './AbandonRequestsRule.js';
+import BolaRule from './BolaRule.js';
+import BolaAbandonRule from './BolaAbandonRule.js';
+import MediaPlayerModel from '../../models/MediaPlayerModel.js';
 import MetricsModel from '../../models/MetricsModel.js';
-import DashMetricsExtensions from '../../../dash/extensions/DashMetricsExtensions.js';
+import DashMetrics from '../../../dash/DashMetrics.js';
 import FactoryMaker from '../../../core/FactoryMaker.js';
 
 const QUALITY_SWITCH_RULES = 'qualitySwitchRules';
@@ -52,24 +55,40 @@ function ABRRulesCollection() {
         abandonFragmentRules = [];
 
         let metricsModel = MetricsModel(context).getInstance();
-        let metricsExt = DashMetricsExtensions(context).getInstance();
+        let dashMetrics = DashMetrics(context).getInstance();
+        let mediaPlayerModel = MediaPlayerModel(context).getInstance();
 
-        qualitySwitchRules.push(
-            ThroughputRule(context).create({
-                metricsModel: metricsModel,
-                metricsExt: metricsExt
-            })
-        );
+        if (mediaPlayerModel.getBufferOccupancyABREnabled()) {
+            qualitySwitchRules.push(
+                BolaRule(context).create({
+                    metricsModel: metricsModel,
+                    dashMetrics: DashMetrics(context).getInstance()
+                })
+            );
+            abandonFragmentRules.push(
+                BolaAbandonRule(context).create({
+                    metricsModel: metricsModel,
+                    dashMetrics: DashMetrics(context).getInstance()
+                })
+            );
+        } else {
+            qualitySwitchRules.push(
+                ThroughputRule(context).create({
+                    metricsModel: metricsModel,
+                    dashMetrics: dashMetrics
+                })
+            );
 
-        qualitySwitchRules.push(
-            BufferOccupancyRule(context).create({
-                metricsModel: metricsModel,
-                metricsExt: metricsExt
-            })
-        );
+            qualitySwitchRules.push(
+                BufferOccupancyRule(context).create({
+                    metricsModel: metricsModel,
+                    dashMetrics: dashMetrics
+                })
+            );
 
-        qualitySwitchRules.push(InsufficientBufferRule(context).create({metricsModel: metricsModel}));
-        abandonFragmentRules.push(AbandonRequestsRule(context).create());
+            qualitySwitchRules.push(InsufficientBufferRule(context).create({metricsModel: metricsModel}));
+            abandonFragmentRules.push(AbandonRequestsRule(context).create());
+        }
     }
 
     function getRules (type) {

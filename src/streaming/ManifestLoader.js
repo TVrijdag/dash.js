@@ -50,7 +50,7 @@ function ManifestLoader(config) {
     let parser = config.parser;
     let errHandler = config.errHandler;
     let metricsModel = config.metricsModel;
-    let requestModifierExt = config.requestModifierExt;
+    let requestModifier = config.requestModifier;
 
     let instance,
         xlinkController,
@@ -61,7 +61,7 @@ function ManifestLoader(config) {
         let xlinkLoader = XlinkLoader(context).create({
             errHandler: errHandler,
             metricsModel: metricsModel,
-            requestModifierExt: requestModifierExt
+            requestModifier: requestModifier
         });
         xlinkController = XlinkController(context).create({
             xlinkLoader: xlinkLoader
@@ -202,9 +202,9 @@ function ManifestLoader(config) {
             request.onloadend = report;
             request.onerror = report;
             request.onprogress = progress;
-            request.open('GET', requestModifierExt.modifyRequestURL(url), true);
+            request.open('GET', requestModifier.modifyRequestURL(url), true);
             request.withCredentials = context.withCredentials === true;
-            request = requestModifierExt.modifyRequestHeader(request);
+            request = requestModifier.modifyRequestHeader(request);
             request.send();
         } catch (e) {
             request.onerror();
@@ -213,7 +213,8 @@ function ManifestLoader(config) {
 
     function reset() {
         eventBus.off(Events.XLINK_READY, onXlinkReady, instance);
-        requestModifierExt = null;
+        requestModifier = null;
+        xlinkController.reset();
         xlinkController = null;
     }
 

@@ -38,9 +38,6 @@ import Debug from '../../core/Debug.js';
 
 function PlaybackController() {
 
-    //This value influences the startup time for live.
-    const WALLCLOCK_TIME_UPDATE_INTERVAL = 50;
-
     let context = this.context;
     let log = Debug(context).getInstance().log;
     let eventBus = EventBus(context).getInstance();
@@ -50,9 +47,9 @@ function PlaybackController() {
         streamController,
         timelineConverter,
         metricsModel,
-        metricsExt,
+        dashMetrics,
         manifestModel,
-        manifestExt,
+        dashManifestModel,
         adapter,
         videoModel,
         currentTime,
@@ -62,7 +59,8 @@ function PlaybackController() {
         firstAppended,
         streamInfo,
         isDynamic,
-        mediaPlayerModel;
+        mediaPlayerModel,
+        playOnceInitialized;
 
     function setup() {
         currentTime = 0;
@@ -71,12 +69,14 @@ function PlaybackController() {
         isDynamic = null;
         commonEarliestTime = {};
         firstAppended = {};
+        playOnceInitialized = false;
         mediaPlayerModel = MediaPlayerModel(context).getInstance();
     }
 
     function initialize(StreamInfo) {
         streamInfo = StreamInfo;
-        setupVideoModel();
+        element = videoModel.getElement();
+        addAllListeners();
         isDynamic = streamInfo.manifestInfo.isDynamic;
         liveStartTime = streamInfo.start;
 
@@ -84,6 +84,11 @@ function PlaybackController() {
         eventBus.on(Events.LIVE_EDGE_SEARCH_COMPLETED, onLiveEdgeSearchCompleted, this);
         eventBus.on(Events.BYTES_APPENDED, onBytesAppended, this);
         eventBus.on(Events.BUFFER_LEVEL_STATE_CHANGED, onBufferLevelStateChanged, this);
+
+        if (playOnceInitialized) {
+            playOnceInitialized = false;
+            play();
+        }
     }
 
     function getTimeToStreamEnd() {
@@ -103,8 +108,12 @@ function PlaybackController() {
     }
 
     function play() {
-        if (!element) return;
-        element.play();
+        if (element) {
+            element.autoplay = true;
+            element.play();
+        } else {
+            playOnceInitialized = true;
+        }
     }
 
     function isPaused() {
@@ -115,6 +124,7 @@ function PlaybackController() {
     function pause() {
         if (!element) return;
         element.pause();
+        element.autoplay = false;
     }
 
     function isSeeking() {
@@ -167,7 +177,7 @@ function PlaybackController() {
      * */
     function getLiveDelay(fragmentDuration) {
         var delay;
-        var mpd = manifestExt.getMpd(manifestModel.getValue());
+        var mpd = dashManifestModel.getMpd(manifestModel.getValue());
 
         if (mediaPlayerModel.getUseSuggestedPresentationDelay() && mpd.hasOwnProperty('suggestedPresentationDelay')) {
             delay = mpd.suggestedPresentationDelay;
@@ -176,7 +186,6 @@ function PlaybackController() {
         } else {
             delay = streamInfo.manifestInfo.minBufferTime * 2;
         }
-
         return delay;
     }
 
@@ -208,14 +217,14 @@ function PlaybackController() {
         if (config.metricsModel) {
             metricsModel = config.metricsModel;
         }
-        if (config.metricsExt) {
-            metricsExt = config.metricsExt;
+        if (config.dashMetrics) {
+            dashMetrics = config.dashMetrics;
         }
         if (config.manifestModel) {
             manifestModel = config.manifestModel;
         }
-        if (config.manifestExt) {
-            manifestExt = config.manifestExt;
+        if (config.dashManifestModel) {
+            dashManifestModel = config.dashManifestModel;
         }
         if (config.adapter) {
             adapter = config.adapter;
@@ -252,11 +261,7 @@ function PlaybackController() {
             if (!isNaN(startTimeOffset) && startTimeOffset < streamInfo.duration && startTimeOffset >= 0) {
                 presentationStartTime = startTimeOffset;
             } else {
-                if (videoModel.getElement().currentTime != streamInfo.start) {
-                    presentationStartTime = videoModel.getElement().currentTime;
-                } else {
-                    presentationStartTime = streamInfo.start;
-                }
+                presentationStartTime = streamInfo.start;
             }
         }
 
@@ -265,7 +270,7 @@ function PlaybackController() {
 
     function getActualPresentationTime(currentTime) {
         var metrics = metricsModel.getReadOnlyMetricsFor('video') || metricsModel.getReadOnlyMetricsFor('audio');
-        var DVRMetrics = metricsExt.getCurrentDVRInfo(metrics);
+        var DVRMetrics = dashMetrics.getCurrentDVRInfo(metrics);
         var DVRWindow = DVRMetrics ? DVRMetrics.range : null;
         var actualTime;
 
@@ -287,7 +292,7 @@ function PlaybackController() {
             onWallclockTime();
         };
 
-        wallclockTimeIntervalId = setInterval(tick, WALLCLOCK_TIME_UPDATE_INTERVAL);
+        wallclockTimeIntervalId = setInterval(tick, mediaPlayerModel.getWallclockTimeUpdateInterval());
     }
 
     function stopUpdatingWallclockTime() {
@@ -307,11 +312,9 @@ function PlaybackController() {
 
     function updateCurrentTime() {
         if (isPaused() || !isDynamic || element.readyState === 0) return;
-
         var currentTime = getTime();
         var actualTime = getActualPresentationTime(currentTime);
         var timeChanged = (!isNaN(actualTime) && actualTime !== currentTime);
-
         if (timeChanged) {
             seek(actualTime);
         }
@@ -446,7 +449,7 @@ function PlaybackController() {
         bufferedStart = Math.max(ranges.start(0), streamInfo.start);
         commonEarliestTime[id] = (commonEarliestTime[id] === undefined) ? bufferedStart : Math.max(commonEarliestTime[id], bufferedStart);
 
-        // do nothing if common earliest time has not changed or if the firts segment has not been appended or if current
+        // do nothing if common earliest time has not changed or if the first segment has not been appended or if current
         // time exceeds the common earliest time
         if ((currentEarliestTime === commonEarliestTime[id] && (time === currentEarliestTime)) || !firstAppended[id] || !firstAppended[id].ready || (time > commonEarliestTime[id])) return;
 
@@ -468,8 +471,7 @@ function PlaybackController() {
         videoModel.setStallState(e.mediaType, e.state === BufferController.BUFFER_EMPTY);
     }
 
-    function setupVideoModel() {
-        element = videoModel.getElement();
+    function addAllListeners() {
         element.addEventListener('canplay', onCanPlay);
         element.addEventListener('play', onPlaybackStart);
         element.addEventListener('playing', onPlaybackPlaying);
